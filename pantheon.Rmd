@@ -1,0 +1,326 @@
+---
+title: "AmericanPantheon"
+author: "Hunter Sanders"
+date: "`r Sys.Date()`"
+output: html_document
+
+---
+```{r setup, include=FALSE, echo=FALSE, warning=FALSE}
+# Load required libraries
+library(tidyverse)
+```
+
+  For this project, I will be using the most recent Pantheon data set. The goal of Pantheon is to collect biographical data on history's most influential people. Pantheon collects data on age, place of birth, place of death, occupation and more. A biography must have a presence in 15 language editions of Wikipedia to be collected in the data set. The rankings of the people in the data set are determined by each person's "HPI" or Historical popularity index. This is a normalized variable that is made up of 5 parts: 
+
+1. age (Christ has an age over 2000 years)
+2. The number of Wikipedia language editions the person has a presence(l). 
+3. The concentration of the pageviews received by a biography across languages (l_) 
+4. Stability of page views over time (coefficient of variation) 
+5. Total number of non-English pageviews. 
+
+
+For my purposes, I will treat this data set as a comprehensive list of the most influential people throughout history. 
+  
+More information on the data set can be found here: https://pantheon.world/data/faq
+  
+  
+Many Americans believe that the United States has a special character that sets it apart from other countries. This is called "American Exceptionalism". In this report, my goal is put this idea to the test and see if the Americans are truly overepresented among the greatest figures of history.
+  
+Since we are going to use HPI as metric to show how influential or exceptional a person is we should verify how it is distributed.
+If we look at a histogram of HPI. we can easily see that it is normally distributed. I have also attached a box plot and a summary of some relevant values such as the mean, standard deviation and five number summary.
+
+  
+```{r age_histogram, echo=FALSE, warning=FALSE}
+
+pantheon = read.csv("pantheon.csv")
+
+
+
+pantheon %>%
+  ggplot(aes(x = hpi)) +
+  geom_histogram(binwidth = 1, fill = "#B22234", color = "black") +
+  labs(title = "Histogram of HPI(Historical Popularity Index)", x = "HPI", y = "Frequency") +
+  theme_minimal()
+
+
+```
+
+
+
+```{r age_boxplot, echo=FALSE, warning=FALSE}
+
+pantheon %>%
+  ggplot(aes(x = "", y = hpi)) +
+  geom_boxplot(fill = "#3C3B6E", outlier.color = "#B22234", outlier.shape = 16, outlier.size = 2) +
+  labs(title = "Boxplot of HPI", y = "Historical Popularity Index") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+
+
+```
+
+
+
+```{r echo=FALSE, warning=FALSE}
+library(knitr)
+pantheon = read.csv("pantheon.csv")
+
+ hpi_summary_stats <- pantheon %>% 
+  summarize(
+    mean_hpi = mean(hpi, na.rm = TRUE),
+    sd_hpi = sd(hpi, na.rm = TRUE),
+    min_hpi = min(hpi, na.rm = TRUE),
+    q1_hpi = quantile(hpi, 0.25,  na.rm = TRUE),
+    median_hpi = median(hpi, na.rm = TRUE),
+    q3_hpi = quantile(hpi, 0.75,  na.rm = TRUE),
+    max_hpi = max(hpi, na.rm = TRUE),
+    
+  )
+kable(hpi_summary_stats, caption = "Mean, Standard Deviation and Five Number Summary of Historical Popularity Index")
+
+
+
+
+```
+Since HPI is a composite variable, we will look at the correlation of each variable that makes it up. This will help us to us to see how variable is weighted in determining HPI. 
+
+```{r echo=FALSE}
+correlations <- pantheon %>%
+  summarize(
+    age = cor(age, hpi, use = "complete.obs"),
+    l = cor(l, hpi, use = "complete.obs"),
+    l_ = cor(l_, hpi, use = "complete.obs"),
+    non_english_page_views = cor(non_en_page_views, hpi, use = "complete.obs"),
+    coefficient_of_variation = cor(coefficient_of_variation, hpi, use = "complete.obs"),
+    
+  )
+
+library(knitr)
+kable(correlations, caption = "Correlation of Different Variables with Historical Popularity Index (HPI)")
+```
+
+
+
+To start with our analysis of American Exceptionalism, we should check to see if Americans are over represented in pure numbers on the Pantheon List. Below I have created a frequency table that shows the countries with the most people on the Pantheon list. 
+  
+
+```{r echo=FALSE}
+library(tidyverse)
+library(knitr)
+
+bplace_country_table <- pantheon %>%
+  mutate(bplace_country = ifelse(is.na(bplace_country) | bplace_country == "", "Unknown", bplace_country)) %>%
+  count(bplace_country, name = "frequency") %>%
+  mutate(
+    percentage = frequency / sum(frequency) * 100,
+    percentage = round(percentage, 2)
+  ) %>%
+  arrange(desc(frequency))
+
+kable(head(bplace_country_table, n = 15), 
+      caption = "The 15 Most Frequent Nationalities in Pantheon")
+```
+
+
+We can easily see that Americans are over represented on the list. They are 17.95 percent of influential people but only 4.14 percent of the worlds population. 
+
+It seems that Americans have been very influential throughout history. We will now examine how  important they are to the present day. We will do so by looking at the proportion of Americans in the set of influential people that are alive today. Below there is a heat map that displays the number of people born in the United States vs. outside. The heat map also differentiates between those currently living and deceased.
+
+
+
+
+```{r echo=FALSE}
+library(tidyverse)
+
+pantheon <- read_csv("pantheon.csv", show_col_types = FALSE)
+
+heatmap_df <- pantheon %>%
+  mutate(Born_in_US = ifelse(bplace_country == "United States", "US", "Non-US")) %>%
+  filter(!is.na(Born_in_US) & !is.na(alive)) %>%
+  count(Born_in_US, alive) %>%
+  group_by(alive) %>%
+  mutate(
+    total_in_group = sum(n),
+    percentage = round(n / total_in_group * 100, 2)
+  ) %>%
+  ungroup()
+
+ggplot(heatmap_df, aes(x = alive, y = Born_in_US, fill = n)) +
+  geom_tile() +
+  geom_text(aes(label = paste0(n, " (", percentage, "%)")), color = "white", size = 6) +
+  scale_fill_gradient(low = "#3C3B6E", high = "#B22234", name = "Number of Individuals") +
+  labs(title = "Proportion of Americans Both Dead and Alive",
+       x = "Currently Living",
+       y = "Born in the United States") +
+  theme_minimal()
+```
+
+Here we see an even higher prevalence of Americans. They make up 21.53 percent of living influential people as compared to 17.95 percent of influential people throughout history. This raw count of Americans in the data set does not take into account the rankings of people based off their HPI. However in a list of history's most notable people, quantity has a quality all its own. 
+
+
+We will now look at some scatter-plots that show the HPI of each individual and their birth year. Each American is color coded red. The Non-Americans are color coded blue. I have included a series of scatter plots that are segmented by the birth year of people included. This will give us a picture of the concentration of influential Americans as we move closer to the present. 
+
+
+
+
+```{r warning=FALSE}
+ggplot(pantheon %>% filter(!is.na(bplace_country)), aes(x = birthyear, y = hpi)) +
+  geom_jitter(size = 0.7, alpha = 0.5, 
+             aes(color = ifelse(bplace_country == "United States", "American", "Non-American"))) +
+  scale_color_manual(values = c("Non-American" = "#3C3B6E", "American" = "#B22234")) +
+  labs(x = "Birth Year", y = "Historical Popularity Index (HPI)", 
+       title = "Scatterplot of the World's Birth Year and HPI") + 
+  theme_minimal() +
+  guides(color = guide_legend(title = "Nationality")) + 
+  theme(legend.position = "top")
+
+```
+
+
+
+``` {r echo = FALSE}
+
+plot_hpi_by_year <- function(data, start_year) {
+  ggplot(data %>% filter(!is.na(bplace_country)), aes(x = birthyear, y = hpi)) +
+    geom_jitter(size = 0.7, alpha = 0.5, 
+                aes(color = ifelse(bplace_country == "United States", "American", "Non-American")),
+                width = 0.1, height = 0.1) +  # Add jitter with small width and height
+    scale_color_manual(values = c("Non-American" = "#3C3B6E", "American" = "#B22234")) +
+    labs(x = "Birth Year", y = "Historical Popularity Index (HPI)", 
+         title = paste("Scatterplot of the World's Birth Year and HPI Since", start_year)) + 
+    theme_minimal() +
+    guides(color = guide_legend(title = "Nationality")) + 
+    theme(legend.position = "top")
+}
+
+
+pantheon_since_1500 = pantheon %>% filter(birthyear >= 1500)
+pantheon_since_1800 = pantheon %>% filter(birthyear >= 1800)
+pantheon_since_1900 = pantheon %>% filter(birthyear >= 1900)
+pantheon_since_1950 = pantheon %>% filter(birthyear >= 1950)
+
+
+plot_hpi_by_year(pantheon_since_1500, 1500)
+plot_hpi_by_year(pantheon_since_1800, 1800)
+plot_hpi_by_year(pantheon_since_1900, 1900)
+plot_hpi_by_year(pantheon_since_1950, 1950)
+
+
+```
+
+The scatter plots are pretty clear. There are almost no influential Americans until the 18th century. That is to be expected. The Constitution wasn't ratified until 1789. The vast majority of influential Americans don't arrive until the late 19th and early 20th centuries. Many historians characterize the 20th century as the American century. The United States won two world wars and inherited the British Empire's mantle as a global hegemon.
+
+In terms of mean and median HPI, Americans are not more influential on throughout all of history. However if you take the mean and median HPI of people born after 1900 Americans have about a two point advantage in terms of mean and median HPI. The gap is even greater if you look people born after 1950. It seems as if the closer you get to the present, The United States becomes more influential compared to the rest of the world. Americans do seem to be somewhat exceptional.
+
+
+```{r echo=FALSE}
+library(dplyr)
+library(tidyr)
+library(knitr)
+
+summarize_hpi <- function(data) {
+  data %>%
+    summarize(
+      mean_hpi = mean(hpi, na.rm = TRUE),
+      median_hpi = median(hpi, na.rm = TRUE)
+    )
+}
+
+pantheon_since_1500 <- pantheon %>% filter(birthyear >= 1500)
+pantheon_since_1800 <- pantheon %>% filter(birthyear >= 1800)
+pantheon_since_1900 <- pantheon %>% filter(birthyear >= 1900)
+pantheon_since_1950 <- pantheon %>% filter(birthyear >= 1950)
+
+us_pantheon_since_1500 <- pantheon_since_1500 %>% filter(bplace_country == "United States")
+us_pantheon_since_1800 <- pantheon_since_1800 %>% filter(bplace_country == "United States")
+us_pantheon_since_1900 <- pantheon_since_1900 %>% filter(bplace_country == "United States")
+us_pantheon_since_1950 <- pantheon_since_1950 %>% filter(bplace_country == "United States")
+
+non_us_pantheon_since_1500 <- pantheon_since_1500 %>% filter(bplace_country != "United States")
+non_us_pantheon_since_1800 <- pantheon_since_1800 %>% filter(bplace_country != "United States")
+non_us_pantheon_since_1900 <- pantheon_since_1900 %>% filter(bplace_country != "United States")
+non_us_pantheon_since_1950 <- pantheon_since_1950 %>% filter(bplace_country != "United States")
+
+hpi_since_1500 <- summarize_hpi(pantheon_since_1500)
+us_hpi_since_1500 <- summarize_hpi(us_pantheon_since_1500)
+non_us_hpi_since_1500 <- summarize_hpi(non_us_pantheon_since_1500)
+
+hpi_since_1800 <- summarize_hpi(pantheon_since_1800)
+us_hpi_since_1800 <- summarize_hpi(us_pantheon_since_1800)
+non_us_hpi_since_1800 <- summarize_hpi(non_us_pantheon_since_1800)
+
+hpi_since_1900 <- summarize_hpi(pantheon_since_1900)
+us_hpi_since_1900 <- summarize_hpi(us_pantheon_since_1900)
+non_us_hpi_since_1900 <- summarize_hpi(non_us_pantheon_since_1900)
+
+hpi_since_1950 <- summarize_hpi(pantheon_since_1950)
+us_hpi_since_1950 <- summarize_hpi(us_pantheon_since_1950)
+non_us_hpi_since_1950 <- summarize_hpi(non_us_pantheon_since_1950)
+
+# New calculations: Mean and Median HPI for the full dataset, US, and Non-US
+hpi_all_time <- summarize_hpi(pantheon)
+us_hpi_all_time <- summarize_hpi(pantheon %>% filter(bplace_country == "United States"))
+non_us_hpi_all_time <- summarize_hpi(pantheon %>% filter(bplace_country != "United States"))
+
+combined_hpi <- bind_rows(
+  hpi_all_time %>% mutate(time_frame = "All Time", group = "All"),
+  us_hpi_all_time %>% mutate(time_frame = "All Time", group = "US"),
+  non_us_hpi_all_time %>% mutate(time_frame = "All Time", group = "Non-US"),
+  
+  hpi_since_1500 %>% mutate(time_frame = "Since 1500", group = "All"),
+  us_hpi_since_1500 %>% mutate(time_frame = "Since 1500", group = "US"),
+  non_us_hpi_since_1500 %>% mutate(time_frame = "Since 1500", group = "Non-US"),
+  
+  hpi_since_1800 %>% mutate(time_frame = "Since 1800", group = "All"),
+  us_hpi_since_1800 %>% mutate(time_frame = "Since 1800", group = "US"),
+  non_us_hpi_since_1800 %>% mutate(time_frame = "Since 1800", group = "Non-US"),
+  
+  hpi_since_1900 %>% mutate(time_frame = "Since 1900", group = "All"),
+  us_hpi_since_1900 %>% mutate(time_frame = "Since 1900", group = "US"),
+  non_us_hpi_since_1900 %>% mutate(time_frame = "Since 1900", group = "Non-US"),
+  
+  hpi_since_1950 %>% mutate(time_frame = "Since 1950", group = "All"),
+  us_hpi_since_1950 %>% mutate(time_frame = "Since 1950", group = "US"),
+  non_us_hpi_since_1950 %>% mutate(time_frame = "Since 1950", group = "Non-US")
+)
+
+create_group_table <- function(data, group_name) {
+  data %>%
+    filter(group == group_name) %>%
+    pivot_longer(cols = c(mean_hpi, median_hpi),
+                 names_to = "statistic",
+                 values_to = "value") %>%
+    pivot_wider(names_from = time_frame,
+                values_from = value) %>%
+    knitr::kable(caption = paste("HPI Comparison Table -", group_name))
+}
+
+table_all <- create_group_table(combined_hpi, "All")
+table_us <- create_group_table(combined_hpi, "US")
+table_non_us <- create_group_table(combined_hpi, "Non-US")
+
+table_us
+table_non_us
+
+
+```
+
+You might ask who are these "exceptional" Americans. Below I have attached a list of the 100 Americans with highest Historical Popularity Index. Note how almost all of them were born in the 19th and 20th centuries. 
+
+``` {r echo=FALSE}
+library(dplyr)
+library(knitr)
+american_pantheon <- pantheon %>% filter(bplace_country == "United States")
+result_table <- american_pantheon %>%
+  select(name, birthyear,bplace_name,  occupation, hpi) %>%
+  arrange(desc(hpi))
+kable(head(result_table, n = 100), caption = "Most 'Exceptional' Americans based on HPI")
+```
+
+
+In conclusion, Americans are heavily over represented in the population of exceptional people compared to the general population of the world. Americans have a higher mean historical popularity index than the rest the world when you look at people born in the recent past. Only time will tell if these trends continue into the future.
+
+
+
