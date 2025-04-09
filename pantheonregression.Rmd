@@ -1,0 +1,313 @@
+---
+title: "pantheonregression"
+output: html_document
+---
+
+------------------------------------------------------------------------
+
+```{r setup, include=FALSE, echo=FALSE, warning=FALSE}
+# Load required libraries
+
+
+library(broom)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+```
+
+We know that history has an inherent recency bias. People who have lived closer to the present are more likely to remembered. Historical knowledge is often based off physical records. These records tend be lost over time due to the general entropy of the world. The pantheon data set aims to account for this by making the age of each figure a part of determining their HPI. This makes a lot of sense. If someone is important enough to be remembered for hundreds or even thousands of years, that person's contributions must be very valuable. We will examine age and hpi via linear regression. This will help us know how much of the variance in hpi can be accounted for with age. 
+
+
+
+``` {r echo=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(broom)
+library(knitr)
+
+pantheon <- read.csv("pantheon.csv") %>%
+drop_na(age, hpi)
+
+model <- lm(hpi ~ age, data = pantheon)
+tidy_model <- tidy(model) # Convert model to data frame
+
+
+summary(model)
+
+kable(tidy_model,
+caption = "Regression Results",
+col.names = c("Term", "Estimate", "Std. Error", "t-value", "p-value"),
+digits = 4)
+
+
+x_pos <- quantile(pantheon$age, 0.75)
+y_pos <- quantile(pantheon$hpi, 0.95)
+slope <- coef(model)["age"]
+intercept <- coef(model)["(Intercept)"]
+
+
+ggplot(pantheon, aes(x = age, y = hpi)) +
+geom_point(color = "#B22234", size = 0.7, alpha = 0.5) +
+geom_smooth(method = "lm", se = TRUE,
+color = "#3C3B6E", fill = "#B22234", alpha = 0.3) +
+labs(x = "Age", y = "Historical Popularity Index (HPI)",
+title = "Regression of HPI on Age") +
+theme_minimal() +
+annotate("text", x = x_pos, y = y_pos,
+label = sprintf("Slope: %.4f\nIntercept: %.2f", slope, intercept),
+color = "#3C3B6E", size = 5, fontface = "bold",
+hjust = 0, vjust = 4) +
+theme(plot.margin = margin(2, 2, 2, 2, "cm")) +
+coord_cartesian(clip = "off")
+
+```
+
+We can obviously see that age correlates to HPI. Our p-value is near zero. By looking at our R-squared values, we can see that age accounts for about 13% of the variance in HPI. To me this seems low. I think the creators of the pantheon data set should weight age a lot higher when determining HPI. The slope of the fit line is only 0.0079
+Now let's examine the other components of HPI using multiple regression. This will help to put the weighting of age in context.
+
+
+```{r echo = FALSE, warning=FALSE}
+library(tidyverse)
+library(broom)
+library(ggplot2)
+library(knitr)
+
+pantheon <- read.csv("pantheon.csv") 
+
+pantheon_clean <- pantheon %>%
+  drop_na(hpi, age, l, non_en_page_views, l_)
+
+multi_model <- lm(hpi ~ age + l + non_en_page_views + l_, data = pantheon_clean)
+
+model_summary <- summary(multi_model)
+r_squared <- model_summary$r.squared
+r_squared_pct <- r_squared * 100
+
+age_model <- lm(hpi ~ age, data = pantheon_clean)
+age_r2 <- summary(age_model)$r.squared
+
+l_model <- lm(hpi ~ l, data = pantheon_clean)
+l_r2 <- summary(l_model)$r.squared
+
+non_en_model <- lm(hpi ~ non_en_page_views, data = pantheon_clean)
+non_en_r2 <- summary(non_en_model)$r.squared
+
+l_underscore_model <- lm(hpi ~ l_, data = pantheon_clean)
+l_underscore_r2 <- summary(l_underscore_model)$r.squared
+
+r2_contributions <- data.frame(
+  term = c("age", "l", "non_en_page_views", "l_", "Total R²"),
+  r2_percentage = c(
+    age_r2 * 100,
+    l_r2 * 100,
+    non_en_r2 * 100,
+    l_underscore_r2 * 100,
+    r_squared_pct
+  )
+)
+
+tidy_multi_model <- tidy(multi_model)
+
+r2_values <- c(age_r2, l_r2, non_en_r2, l_underscore_r2)
+tidy_multi_model$r_squared_pct <- c(NA, r2_values) * 100
+
+kable(tidy_multi_model,
+      caption = "Regression Coefficients for HPI ~ Age + l + Non-English Page Views + l_ (Total R² = 46.1%)",
+      col.names = c("Term", "Estimate", "Std. Error", "Statistic", "P-value", "R² (%)"),
+      digits = 4)
+
+
+
+ggplot(pantheon_clean, aes(x = age, y = hpi)) +
+  geom_point(alpha = 0.5, color = "#B22234") +
+  geom_smooth(method = "lm", se = TRUE, color = "#3C3B6E") +
+  labs(title = "Scatter Plot: Age vs. HPI",
+       x = "Age",
+       y = "Historical Popularity Index (HPI)") +
+  theme_minimal()
+
+ggplot(pantheon_clean, aes(x = l, y = hpi)) +
+  geom_point(alpha = 0.5, color = "#B22234") +
+  geom_smooth(method = "lm", se = TRUE, color = "#3C3B6E") +
+  labs(title = "Scatter Plot: Wikipedia Languages (l) vs. HPI",
+       x = "Number of Wikipedia Languages",
+       y = "Historical Popularity Index (HPI)") +
+  theme_minimal()
+
+ggplot(pantheon_clean, aes(x = non_en_page_views, y = hpi)) +
+  geom_point(alpha = 0.5, color = "#B22234") +
+  geom_smooth(method = "lm", se = TRUE, color = "#3C3B6E") +
+  labs(title = "Scatter Plot: Non-English Page Views vs. HPI",
+       x = "Total Non-English Page Views",
+       y = "Historical Popularity Index (HPI)") +
+  theme_minimal()
+
+ggplot(pantheon_clean, aes(x = l_, y = hpi)) +
+  geom_point(alpha = 0.5, color = "#B22234") +
+  geom_smooth(method = "lm", se = TRUE, color = "#3C3B6E") +
+  labs(title = "Scatter Plot: l_ vs. HPI",
+       x = "l_",
+       y = "Historical Popularity Index (HPI)") +
+  theme_minimal()
+
+
+
+```
+
+
+
+By looking at the R squared values of the variables in our model, we can see that two variables  account for the majority of correlation to hpi. These two variables together account for about 57% of the correlation in our model. What are these important variables?
+These two variables are L(l) and L* (l_) . L is meant to be a measure of global recognition. It is a measure of how many Wikipedia language editions a certain biography has. L* is also related to language editions but also factors in how evenly distributed the page views are across different language editions. It gives a premium status to biographies that have a flatter distribution of page views. The pantheon creators weighted these variables so highly because they thought that wide spread global notoriety should be the most important factor when weighting hpi.  
+
+
+By looking at our plots we can see that a linear model could not be the most appropriate. Lets compare a linear and logarithmic model of age to see which one has a better fit.
+
+
+```{r echo = FALSE, warning=FALSE}
+
+pantheon_clean$log_age <- log(pantheon_clean$age)
+
+linear_model <- lm(hpi ~ age + l + non_en_page_views + l_, data = pantheon_clean)
+
+log_model <- lm(hpi ~ log_age + l + non_en_page_views + l_, data = pantheon_clean)
+
+linear_summary <- summary(linear_model)
+log_summary <- summary(log_model)
+
+age_range <- seq(min(pantheon_clean$age), max(pantheon_clean$age), length.out = 100)
+mean_l <- mean(pantheon_clean$l)
+mean_views <- mean(pantheon_clean$non_en_page_views)
+mean_l_ <- mean(pantheon_clean$l_)
+
+new_data <- data.frame(
+  age = age_range,
+  log_age = log(age_range),
+  l = mean_l,
+  non_en_page_views = mean_views,
+  l_ = mean_l_
+)
+
+new_data$linear_pred <- predict(linear_model, newdata = new_data)
+new_data$log_pred <- predict(log_model, newdata = new_data)
+
+ggplot(pantheon_clean, aes(x = age, y = hpi)) +
+  geom_point(alpha = 0.3, color = "gray50") +
+  geom_line(data = new_data, aes(y = linear_pred, color = "Linear"), size = 1) +
+  geom_line(data = new_data, aes(y = log_pred, color = "Logarithmic"), size = 1) +
+  scale_color_manual(values = c("Linear" = "#3C3B6E", "Logarithmic" = "#B22234"),
+                     name = "Model Type") +
+  labs(title = "Comparison of Linear vs. Logarithmic Regression",
+       subtitle = paste("Linear R² =", round(linear_summary$r.squared, 4), 
+                        "| Logarithmic R² =", round(log_summary$r.squared, 4)),
+       x = "Age",
+       y = "Historical Popularity Index (HPI)") +
+  theme_minimal()
+
+log_summary
+
+kable(coef(summary(log_model)),
+caption = "Log Age Regression Results",
+col.names = c("Estimate", "Std. Error", "t-value", "p-value"),
+digits = 4)
+
+
+```
+
+By comparing a linear and logarithmic fit for age, we can see that the log fit is much more appropriate. The R^2 values of of our model went from 0.461 up to 0.6994. This means we went from explaining 46% of the variance in HPI all the way up to 70%! The estimate of log_age age is also quite high compared to the other variables.
+
+The logarithmic curve for age shows us that most of the notoriety people gain is when they are still living or very recently after their deaths. HPI quickly begins to level off after age reaches 150 to 200 years. This makes sense. There are diminishing returns for popularity. There are only so many people to discover you once you are already quite notable.
+
+
+In my previous part of this project, my goal was to prove the concept of American Exceptionalism. 
+
+We will now do A linear regression with interaction on hpi. We will see how being an American and various occupations interact with it. By examining the occupations with significantly low p-values we can see which occupations have the greatest correlation with being American(These correlations could be positive or negative). Then we can see what occupations occupations Americans are most influential in by looking at which ones have a positive effect size.
+
+Below I have attached scatter plot that shows every occupation with a significant correlation. Hover over each point to see what occupation it is.
+
+
+```{r echo=FALSE, warning=FALSE}
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(plotly)
+
+american_pantheon <- pantheon %>% 
+  mutate(is_American = bplace_country == "United States")
+
+occ_model <- lm(hpi ~ occupation * is_American, american_pantheon)
+
+
+summary_df <- as.data.frame(summary(occ_model)$coefficients) %>%
+  rownames_to_column(var = "term")
+
+significant_interactions <- summary_df %>%
+  filter(grepl(":is_AmericanTRUE", term), `Pr(>|t|)` < 0.05) %>%
+  mutate(Occupation = gsub("occupation|:is_AmericanTRUE", "", term)) %>%
+  select(Occupation, Estimate, `Pr(>|t|)`, `Std. Error`) %>%
+  arrange(`Pr(>|t|)`)
+
+significant_interactions$text_label <- paste(
+  "Occupation: ", significant_interactions$Occupation, 
+  "<br>P-value: ", round(significant_interactions$`Pr(>|t|)`, 4), 
+  "<br>Effect Size: ", round(significant_interactions$Estimate, 3)
+)
+
+significant_interactions$estimate_sign <- ifelse(significant_interactions$Estimate > 0, "Positive", "Negative")
+
+ggplot_plot <- ggplot(significant_interactions, 
+                      aes(x = `Pr(>|t|)`, y = Estimate, 
+                          text = text_label,
+                          color = estimate_sign)) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("Positive" = "#B22234", "Negative" = "#3C3B6E"),
+                     name = "Estimate Direction") +
+  labs(
+    title = "Occupation vs. American Influence (Significant Interactions p < 0.05
+)",
+    x = "P-value",
+    y = "Effect Size (Estimate)",
+    caption = "Only occupations with significant interactions (p < 0.05)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+interactive_plot <- ggplotly(ggplot_plot, tooltip = "text")
+
+interactive_plot
+
+```
+
+Here is a table with all occupations where Americans are significantly more influential.
+Notably, Boxer and Chess Player are the occupations with the highest effect size. If there was a world chess boxing championship, the U.S. might be a favorite.
+
+``` {r echo = FALSE, warning = FALSE}
+occ_model <- lm(hpi ~ occupation * is_American, american_pantheon)
+
+library(dplyr)
+library(knitr)
+
+summary_df <- as.data.frame(summary(occ_model)$coefficients) %>%
+  rownames_to_column(var = "term")
+
+
+significant_positive_interactions <- summary_df %>%
+  filter(grepl(":is_AmericanTRUE", term),
+         Estimate > 0,
+         `Pr(>|t|)` < 0.05) %>%
+  mutate(Occupation = gsub("occupation", "", gsub(":is_AmericanTRUE", "", term))) %>%
+  select(Occupation, Estimate, `Std. Error`, `t value`, `Pr(>|t|)`) %>%
+  arrange(`Pr(>|t|)`)  
+
+kable(significant_positive_interactions,
+      caption = "Occupations Where Being an American Has A Positive Correlation with HPI (p < 0.05)",
+      digits = 3)
+
+
+
+```
+
+
+
+
+
