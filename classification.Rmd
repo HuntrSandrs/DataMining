@@ -1,0 +1,128 @@
+
+---
+title: "Classification"
+output: html_document
+date: "2025-05-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(tidyr)
+library(caret)
+```
+
+
+
+We will be using a few classification techniques, to predict the gender of the top 250 people on the pantheon list.
+
+We will start by creating a decision tree. This will help us to determine which variables are most important in our models.
+
+
+
+```{r warning=FALSE}
+
+
+pantheon <- read.csv("pantheon.csv") 
+
+pantheon2 <- pantheon %>%
+  drop_na() %>%
+  mutate(
+    lifespan = deathyear - birthyear,
+    is_female = ifelse(gender == "F", 1, 0),
+    is_traveler = ifelse(bplace_country != dplace_country, 1, 0)
+  )
+
+top_250 <- pantheon2 %>%
+  arrange(desc(hpi)) %>%
+  slice(1:250)
+
+
+top_250$gender <- as.factor(top_250$gender)
+```
+
+``` {r warning=FALSE}
+
+gender_tree_250 <- rpart(
+  gender ~ lifespan + is_traveler + birthyear + hpi + l + occupation,
+  data = top_250,
+  method = "class",
+  control = rpart.control(minsplit = 10, minbucket = 3, cp = 0.01)
+)
+
+
+rpart.plot(gender_tree_250, extra = 100, box.palette = "RdBu", 
+           shadow.col = "gray", nn = TRUE)
+
+
+gender_tree_250$variable.importance
+```
+Here we can see, that by far the most important variable in are model is occupation. 
+A distant second and third are birth year and number of Wikipedia languages respectively. We will use Stratified K-Fold cross validation. This will help us to manage the great gender imbalance in our data set
+
+
+```{r warning=FALSE}
+
+gender_predictions <- predict(gender_tree_250, top_250, type = "class")
+
+
+gender_confusion_matrix <- table(gender_predictions, top_250$gender)
+
+
+gender_confusion_matrix
+
+
+gender_accuracy <- sum(diag(gender_confusion_matrix)) / sum(gender_confusion_matrix)
+print(paste("Gender Prediction Accuracy:", round(gender_accuracy * 100, 2), "%"))
+
+```
+Examining the accuracy of decision tree with a confusion matrix, we can see that our accuracy is quite high. Let's examine this further by using a cross validation technique (five fold cross validation). 
+
+
+```{r warning=FALSE}
+
+set.seed(123) 
+train_control <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+cv_gender_tree <- train(
+  gender ~ lifespan + is_traveler + birthyear + hpi + l + occupation,
+  data = top_250,
+  method = "rpart",
+  trControl = train_control
+)
+print(cv_gender_tree)
+
+```
+
+By examining our results we can that sensitivity is relatively low, while our accuracy is really high. This is probably due to the gender imbalance in our data set. The vast majority of our data set is male. This means that model could achieve a very high accuracy just by classifying every person as male. This gives us a high accuracy but very low predictive power. Our model's R.O.C is 0.6163121. This is better than random chance (0.5) but not by much.
+
+
+Let's try a different classification technique. We will use K nearest neighbors with the same cross validation technique.  
+```{r warning=FALSE}
+
+set.seed(123)
+
+
+train_control <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+
+cv_gender_knn <- train(
+  gender ~ lifespan + is_traveler + birthyear + hpi + l + occupation,
+  data = top_250,
+  method = "knn",
+  trControl = train_control,
+  preProcess = c("center", "scale"),
+  tuneGrid = expand.grid(k = seq(3, 15, by = 2))  
+)
+
+
+print(cv_gender_knn)
+
+
+
+```
+
+It seems that K nearest neighbors is an even worse method. Even the determined ideal k value (7) has our specificity at 1.00 with our sensitivity at 0.00. This model really did just classify every entry as a male.
+It seems like the decision tree would be the lesser of two evils. Some other work must be done to address the gender imbalance in the data set to create a usable model.
