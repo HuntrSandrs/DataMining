@@ -483,9 +483,12 @@ print(cv_gender_knn)</code></pre>
 ## 
 ## ROC was used to select the optimal model using the largest value.
 ## The final value used for the model was k = 7.</code></pre>
-<pre class="r"><code>cv_knn_accuracy &lt;- max(cv_gender_knn$results$Accuracy)
-print(paste(&quot;Cross-Validated Accuracy (kNN):&quot;, round(cv_knn_accuracy * 100, 2), &quot;%&quot;))</code></pre>
-<pre><code>## [1] &quot;Cross-Validated Accuracy (kNN): -Inf %&quot;</code></pre>
+<p>It seems that K nearest neighbors is an even worse method. Even the
+determined ideal k value (7) has our specificity at 1.00 with our
+sensitivity at 0.00. This model really did just classify every entry as
+a male. It seems like the decision tree would be the lesser of two
+evils. Some other work must be done to address the gender imbalance in
+the data set to create a usable model.</p>
 
 
 
